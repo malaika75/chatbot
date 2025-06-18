@@ -8,5 +8,7 @@ dependencies = [
     "chainlit>=2.4.400",
     "google-generativeai",
     "fastapi",
-    "uvicorn"
+    "uvicorn",
+    "python-dotenv",
+    "PyMuPDF"
 ]
