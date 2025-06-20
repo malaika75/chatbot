@@ -36,29 +36,31 @@ Examples:
 """
 )
 
-chat = model.start_chat(history=[])
-
 chat_file = "chat.json"
 
-def save_message_to_json(sender, text):
+def save_message_to_json(user_id , sender, text):
    if not os.path.exists(chat_file):
       with open(chat_file , "w" )as f:
        json.dump([] , f)
 
    with open(chat_file , "r")as f:
-       messages = json.load(f)
+       all_chats = json.load(f)
 
-   messages.append({"sender": sender , "text" : text})
+   if user_id not in all_chats:
+      all_chats[user_id] = []
+
+   all_chats[user_id].append({"sender": sender , "text" : text})
 
 
    with open(chat_file  , "w")as f:
-     json.dump(messages , f , indent=2)
+     json.dump(all_chats , f , indent=2)
 
-def load_message():
+def load_message(user_id):
    if os.path.exists(chat_file):
       with open(chat_file , "r")as f:
-        return json.load(f)
-   return[]
+        all_chat = json.load(f)
+        return all_chat.get(user_id , [])
+   return []
 
 
 def extract_text_from_pdf(file_path):
@@ -74,13 +76,23 @@ def generate_explanation(prompt):
 
 @cl.on_chat_start
 async def show_previous_chat():
-   messages = load_message()
+   user_id = cl.user_session.id
+   messages = load_message(user_id)
+
+
+   history = [{"role": "user", "parts": [msg["text"]]} if msg["sender"] == "user" 
+           else {"role": "model", "parts": [msg["text"]]} for msg in messages]
+
+   global chat
+   chat = model.start_chat(history=history)
+
    for msg in messages:
       await cl.Message(author=msg["sender"] , content=msg["text"]).send()
       
 
 @cl.on_message #cl chainlit ki shortfoam or on message decorator use kia hy ye kaam krta hy ky jo bhi data user dalta hy ye usy ly ga 
 async def tutor_agent(message: cl.Message):
+    user_id = cl.user_session.id
     if message.elements:
        file = message.elements[0]
        path = file.path
@@ -103,9 +115,9 @@ async def tutor_agent(message: cl.Message):
         typing_msg.content += "."
         await typing_msg.update()
         
-    save_message_to_json("user" , message.content)   
+    save_message_to_json(user_id,"user" , message.content)   
     explanation = generate_explanation(prompt)
-    save_message_to_json("ai" , explanation)
+    save_message_to_json(user_id, "ai" , explanation)
     await cl.Message(explanation).send()
    
 
