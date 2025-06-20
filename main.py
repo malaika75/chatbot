@@ -76,7 +76,7 @@ def generate_explanation(prompt):
 
 @cl.on_chat_start
 async def show_previous_chat():
-   user_id = cl.user_session.id
+   user_id = cl.user_session["id"]
    messages = load_message(user_id)
 
 
@@ -92,7 +92,7 @@ async def show_previous_chat():
 
 @cl.on_message #cl chainlit ki shortfoam or on message decorator use kia hy ye kaam krta hy ky jo bhi data user dalta hy ye usy ly ga 
 async def tutor_agent(message: cl.Message):
-    user_id = cl.user_session.id
+    user_id = cl.user_session["id"]
     if message.elements:
        file = message.elements[0]
        path = file.path
