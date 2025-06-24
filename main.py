@@ -3,7 +3,7 @@ from dotenv import load_dotenv
 import google.generativeai as genai
 import os
 import fitz #PyMuPDF
-import json
+
 
 load_dotenv(dotenv_path=".env") #file se environment variables load kare
 genai.configure(api_key=os.getenv("GEMINI_API_KEY")) #usme se key nikaal ke Gemini ko configure kare
@@ -20,12 +20,19 @@ Your job:
 1. Understand PDFs or text from handouts (even 10+ lectures).
 2. Explain clearly **lecture by lecture** or concept by concept.
 3. If user sends code, **explain the code**, **write examples**, and **help debug** if needed.
-4. If user talks in Urdu, Roman Urdu or text-style English, reply in that same tone and script reply in the **same language and tone** (casual, smart, natural).
-5. Speak like a smart, friendly tutor — NEVER robotic or formal.
-6. Repeat or simplify topics if the user is confused.
-7. Generate **MCQs** if user says “MCQs bana do”.
-8. If user sends no file, still help — figure out their intent and explain the topic.
-9. Always act like a helpful, intelligent, and warm tutor who makes university life easier and boosts CGPA.
+4. Detect the user's language style in the **latest message**:
+  - If the message is in Roman Urdu (e.g. "samjhao", "kya hota hai"), reply entirely in Roman Urdu, casual friendly tone.
+  - If the message is in proper English, reply fully in English.
+  - Never mix Urdu and English in one reply — keep it consistent based on the user's current message.
+
+5. If the user is using English, respond in English naturally.
+
+6. Never use 'tu' or informal disrespectful tone — always use 'tum' or a respectful, friendly tone like a helpful university friend.
+
+7. Speak like a smart, friendly tutor — NEVER robotic or formal.8. Repeat or simplify topics if the user is confused.
+8. Generate **MCQs** if user says “MCQs bana do”.
+9. If user sends no file, still help — figure out their intent and explain the topic.
+10. Always act like a helpful, intelligent, and warm tutor who makes university life easier and boosts CGPA.
 
 Examples:
 - User: "lecture 3 samjhao"
@@ -35,33 +42,6 @@ Examples:
 - You: "Sure! Ye code basically ye kaam kr rha hai..."
 """
 )
-
-chat_file = "chat.json"
-
-def save_message_to_json(user_id , sender, text):
-   if not os.path.exists(chat_file):
-      with open(chat_file , "w" )as f:
-       json.dump([] , f)
-
-   with open(chat_file , "r")as f:
-       all_chats = json.load(f)
-
-   if user_id not in all_chats:
-      all_chats[user_id] = []
-
-   all_chats[user_id].append({"sender": sender , "text" : text})
-
-
-   with open(chat_file  , "w")as f:
-     json.dump(all_chats , f , indent=2)
-
-def load_message(user_id):
-   if os.path.exists(chat_file):
-      with open(chat_file , "r")as f:
-        all_chat = json.load(f)
-        return all_chat.get(user_id , [])
-   return []
-
 
 def extract_text_from_pdf(file_path):
     text = ""
@@ -78,24 +58,24 @@ def generate_explanation(prompt):
 import uuid
 @cl.on_chat_start
 async def show_previous_chat():
-   user_id = str(uuid.uuid4())
-   cl.user_session.set("id" , user_id)
-   messages = load_message(user_id)
+    
+    history = cl.user_session.get("chat_history") or []
+    global chat
+    chat = model.start_chat(history=history)
 
+    cl.user_session.set("chat_history" , history)
 
-   history = [{"role": "user", "parts": [msg["text"]]} if msg["sender"] == "user" 
-           else {"role": "model", "parts": [msg["text"]]} for msg in messages]
-
-   global chat
-   chat = model.start_chat(history=history)
-
-   for msg in messages:
-      await cl.Message(author=msg["sender"] , content=msg["text"]).send()
+    for msg in history:
+       role = msg["role"]
+       content = msg["parts"][0]
+       author = "user" if role == "user" else "ai"
+       await cl.Message(author=author , content=content).send()
       
 
 @cl.on_message #cl chainlit ki shortfoam or on message decorator use kia hy ye kaam krta hy ky jo bhi data user dalta hy ye usy ly ga 
 async def tutor_agent(message: cl.Message):
-    user_id = cl.user_session.get("id")
+    history = cl.user_session.get("chat_history") or []
+    
     if message.elements:
        file = message.elements[0]
        path = file.path
@@ -117,10 +97,13 @@ async def tutor_agent(message: cl.Message):
         await asyncio.sleep(0.4)
         typing_msg.content += "."
         await typing_msg.update()
-        
-    save_message_to_json(user_id,"user" , message.content)   
+    
+    history.append({"role": "user", "parts":[message.content]})
+
     explanation = generate_explanation(prompt)
-    save_message_to_json(user_id, "ai" , explanation)
+    
+    history.append({"role": "model", "parts":[explanation]})
+    cl.user_session.set("chat_history" , history)
     await cl.Message(explanation).send()
    
 
